@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dosya Yükle ve Seslendir</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            background-color: white;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: whitesmoke;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin-top: 20px;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid wheat;
+            border-radius: 4px;
+            resize: none;
+        }
+
+        button, select {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 10px 5px;
+            background-color: blueviolet;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .file-label {
+            background-color: blueviolet;
+            color: white;
+            padding: 10px;
+            cursor: pointer;
+            display: inline-block;
+        }
+
+        .file-label:hover {
+            background-color: blueviolet;
+        }
+
+        #fileContent {
+            margin-top: 20px;
+            font-size: 16px;
+            color: #333;
+            white-space: pre-wrap;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dosya Yükle ve Seslendir</h1>
+
+        <label for="fileInput" class="file-label">Dosya Yükle</label>
+        <input type="file" id="fileInput" accept=".pdf" />
+
+        <textarea id="textInput" placeholder="Buraya metin yazabilirsiniz..."></textarea>
+
+        <label for="wordCountSelect">Kelime Sayısı:</label>
+        <select id="wordCountSelect">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+        </select>
+
+        <label for="waitTimeSelect">Bekleme Süresi (saniye):</label>
+        <select id="waitTimeSelect">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+        </select>
+
+        <div>
+            <button id="startReadingButton">Başlat</button>
+            <button id="pauseButton" disabled>Duraklat</button>
+            <button id="resumeButton" disabled>Devam Et</button>
+        </div>
+
+        <div id="fileContent">
+            <p>Dosyanın içeriği burada görünecek.</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const fileInput = document.getElementById('fileInput');
+            const textInput = document.getElementById('textInput');
+            const startReadingButton = document.getElementById('startReadingButton');
+            const pauseButton = document.getElementById('pauseButton');
+            const resumeButton = document.getElementById('resumeButton');
+            const wordCountSelect = document.getElementById('wordCountSelect');
+            const waitTimeSelect = document.getElementById('waitTimeSelect');
+            const fileContent = document.getElementById('fileContent');
+
+            let textContent = '';
+            let words = [];
+            let index = 0;
+            let paused = false;
+            let currentUtterance = null;
+
+            const pdfjsLib = window['pdfjs-dist/build/pdf'];
+
+            function readPDF(file) {
+                const loadingTask = pdfjsLib.getDocument(file);
+                loadingTask.promise.then(function (pdf) {
+                    let text = '';
+                    let pagesPromises = [];
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        pagesPromises.push(
+                            pdf.getPage(i).then(function (page) {
+                                return page.getTextContent().then(function (content) {
+                                    content.items.forEach(function (item) {
+                                        text += item.str + ' ';
+                                    });
+                                });
+                            })
+                        );
+                    }
+                    Promise.all(pagesPromises).then(() => {
+                        textContent = text.trim();
+                        fileContent.textContent = textContent;
+                        textInput.value = textContent;
+                    });
+                }).catch(function (error) {
+                    alert('PDF okuma hatası: ' + error.message);
+                });
+            }
+
+            function speakText() {
+                if (index >= words.length) {
+                    startReadingButton.disabled = false;
+                    pauseButton.disabled = true;
+                    resumeButton.disabled = true;
+                    return;
+                }
+
+                const wordCount = parseInt(wordCountSelect.value, 10);
+                const waitTime = parseInt(waitTimeSelect.value, 10);
+
+                const batch = words.slice(index, index + wordCount).join(' ');
+                currentUtterance = new SpeechSynthesisUtterance(batch);
+                currentUtterance.lang = 'tr-TR';
+
+                currentUtterance.onend = function () {
+                    if (!paused) {
+                        index += wordCount;
+                        setTimeout(speakText, waitTime * 1000);
+                    }
+                };
+
+                window.speechSynthesis.speak(currentUtterance);
+            }
+
+            startReadingButton.addEventListener('click', function () {
+                textContent = textInput.value || fileContent.textContent;
+                if (textContent.trim() === '') {
+                    alert('Seslendirme için metin bulunamadı!');
+                    return;
+                }
+
+                words = textContent.split(' ');
+                index = 0;
+                paused = false;
+
+                startReadingButton.disabled = true;
+                pauseButton.disabled = false;
+                resumeButton.disabled = true;
+
+                speakText();
+            });
+
+            pauseButton.addEventListener('click', function () {
+                paused = true;
+                window.speechSynthesis.cancel();
+                pauseButton.disabled = true;
+                resumeButton.disabled = false;
+            });
+
+            resumeButton.addEventListener('click', function () {
+                paused = false;
+                pauseButton.disabled = false;
+                resumeButton.disabled = true;
+
+                speakText();
+            });
+
+            fileInput.addEventListener('change', function (e) {
+                const file = e.target.files[0];
+                if (file && file.type === 'application/pdf') {
+                    const reader = new FileReader();
+                    reader.onload = function (event) {
+                        const arrayBuffer = event.target.result;
+                        readPDF(arrayBuffer);
+                    };
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    alert('Lütfen bir PDF dosyası seçiniz.');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
